@@ -322,6 +322,9 @@ fn repl(lua: &Lua) -> Result<()> {
     loop {
         let readline = editor.readline(">> ");
 
+        //  TODO validation with rustyline::validte::Validator
+        //  TODO hinting ?
+
         match readline {
             Ok(line) => {
                 editor.add_history_entry(line.as_str());
