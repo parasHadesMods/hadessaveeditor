@@ -2,7 +2,6 @@ use crate::read;
 use crate::write;
 
 use anyhow::{anyhow, Context, Result};
-use std::array;
 use std::convert::TryInto;
 use rlua::Value;
 
@@ -109,7 +108,6 @@ fn save_value(savestate: &mut Vec<u8>, value: Value) -> Result<()> {
       Ok(())
     },
     Value::String(string_value) => {
-      //println!("{}", String::from_utf8(string_value.as_bytes().to_vec()).unwrap_or("error".to_owned()));
       write::byte(savestate, LUABINS_CSTRING);
       save_string(savestate, string_value);
       Ok(())
@@ -129,7 +127,6 @@ fn save_value(savestate: &mut Vec<u8>, value: Value) -> Result<()> {
 
 pub fn save<'lua>(savestate: &mut Vec<u8>, values: Vec<Value>) -> Result<()> {
   write::byte(savestate, values.len() as u8);
-  println!("{}", values.len());
   for value in values.into_iter() {
     save_value(savestate, value)?;
   }
