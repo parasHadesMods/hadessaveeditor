@@ -1,8 +1,9 @@
 use crate::read;
 use crate::write;
 
-use std::convert::TryInto;
+use adler32::adler32;
 use anyhow::{bail, Context, Result};
+use std::convert::TryInto;
 
 pub trait UncompressedSize {
   const UNCOMPRESSED_SIZE: i32;
@@ -42,7 +43,7 @@ pub fn read(loadstate: &mut &[u8]) -> Result<HadesSaveV16> {
   let _checksum = read::bytes(loadstate, 4).context("checksum")?;
   let version = read::u32(loadstate).context("version")?;
   if version != 16 {
-    bail!("unknown version");
+    bail!("unknown version {}", version);
   };
   let timestamp = read::u64(loadstate).context("timestamp")?;
   let location = read_string(loadstate).context("location")?;
@@ -86,7 +87,7 @@ fn write_string(contents: &mut Vec<u8>, string: &str) {
   write::bytes(contents, &mut str_bytes);
 }
 
-pub fn write (save: &HadesSaveV16) -> Vec<u8> {
+pub fn write (save: &HadesSaveV16) -> Result<Vec<u8>> {
   let mut contents: Vec<u8> = Vec::new();
   let mut signature = "SGB1".as_bytes().to_owned();
   write::bytes(&mut contents, &mut signature);
@@ -113,5 +114,11 @@ pub fn write (save: &HadesSaveV16) -> Vec<u8> {
   write::u32(&mut contents, save.lua_state_lz4.len() as u32);
   write::bytes(&mut contents, save.lua_state_lz4.clone().as_mut_slice());
 
-  contents
+  let checksum_bytes = adler32(&contents[8..])?.to_ne_bytes();
+  contents[4] = checksum_bytes[0];
+  contents[5] = checksum_bytes[1];
+  contents[6] = checksum_bytes[2];
+  contents[7] = checksum_bytes[3];
+
+  Ok(contents)
 }

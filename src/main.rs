@@ -312,7 +312,7 @@ end
         Ok(())
     })?;
 
-    let outfile = save::write(&savedata);
+    let outfile = save::write(&savedata)?;
     write_file(path, outfile)?;
     Ok(())
 }
