@@ -3,6 +3,7 @@ use crate::write;
 
 use adler32::adler32;
 use anyhow::{bail, Context, Result};
+use lz4;
 use std::convert::TryInto;
 
 pub trait UncompressedSize {
@@ -21,7 +22,7 @@ pub struct HadesSaveV16 {
   pub lua_keys: Vec<String>,
   pub current_map_name: String,
   pub start_next_map: String,
-  pub lua_state_lz4: Vec<u8>
+  pub lua_state: Vec<u8>
 }
 
 impl UncompressedSize for HadesSaveV16 {
@@ -65,6 +66,10 @@ pub fn read(loadstate: &mut &[u8]) -> Result<HadesSaveV16> {
   let lua_state_size = read::u32(loadstate).context("lua_state size")?;
   let lua_state_lz4 = read::bytes(loadstate, lua_state_size.try_into().unwrap()).context("lua_state bytes")?;
   
+  let lua_state = lz4::block::decompress(
+    &lua_state_lz4,
+    Some(HadesSaveV16::UNCOMPRESSED_SIZE))?;
+
   Ok(HadesSaveV16 {
     version: version,
     timestamp: timestamp,
@@ -77,7 +82,7 @@ pub fn read(loadstate: &mut &[u8]) -> Result<HadesSaveV16> {
     lua_keys: lua_keys,
     current_map_name: current_map_name,
     start_next_map: start_next_map,
-    lua_state_lz4: lua_state_lz4.to_vec()
+    lua_state: lua_state
   })
 }
 
@@ -111,8 +116,9 @@ pub fn write (save: &HadesSaveV16) -> Result<Vec<u8>> {
   write_string(&mut contents, &save.current_map_name);
   write_string(&mut contents, &save.start_next_map);
 
-  write::u32(&mut contents, save.lua_state_lz4.len() as u32);
-  write::bytes(&mut contents, save.lua_state_lz4.clone().as_mut_slice());
+  let mut lua_state_lz4 = lz4::block::compress(&save.lua_state, None, false)?;
+  write::u32(&mut contents, lua_state_lz4.len() as u32);
+  write::bytes(&mut contents, &mut lua_state_lz4);
 
   let checksum_bytes = adler32(&contents[8..])?.to_ne_bytes();
   contents[4] = checksum_bytes[0];
