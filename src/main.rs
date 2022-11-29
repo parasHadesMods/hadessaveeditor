@@ -6,11 +6,15 @@ mod write;
 
 use anyhow::Result;
 use clap::{arg, Command};
-use rlua::{Function, Lua, MultiValue};
+use druid::im::Vector;
+use druid::{AppLauncher, Data, Lens, Widget, WidgetExt, WindowDesc};
+use druid::widget::{Flex, Label, List, Scroll};
+use rlua::{Context, Function, Lua, MultiValue, Table, Value, FromLua};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 fn cli() -> Command {
     Command::new("hadessaveeditor")
@@ -34,12 +38,96 @@ fn main() -> Result<()> {
     luastate::initialize(&lua)?;
     luastate::load(&lua, &mut savedata.lua_state.as_slice())?;
 
-    repl(&lua)?;
+    gui(&lua)?;
 
     savedata.lua_state = luastate::save(&lua)?;
 
     let outfile = hadesfile::write(&savedata)?;
     write_file(path, outfile)?;
+    Ok(())
+}
+
+#[derive(Clone, Data, Lens)]
+struct GuiState {
+    dirty: bool,
+    focus: Vector<String>,
+    items: Vector<(String, String)>
+}
+
+fn ui_builder() -> impl Widget<GuiState> {
+    Scroll::new(
+        List::new(|| {
+            Flex::row()
+                .with_flex_child(Label::new(|item: &(String, String), _env: &_| item.0.clone()).expand_width(), 1.0)
+                .with_flex_child(Label::new(|item: &(String, String), _env: &_| item.1.clone()).expand_width(), 1.0)
+        }).lens(GuiState::items)
+    ).vertical()
+}
+
+fn lua_is_saved_type(value: &Value) -> bool {
+    match value {
+        Value::Nil => true,
+        Value::Boolean(_) => true,
+        Value::LightUserData(_) => false,
+        Value::Integer(_) => true,
+        Value::Number(_) => true,
+        Value::String(_) => true,
+        Value::Table(_) => true,
+        Value::Function(_) => false,
+        Value::Thread(_) => false,
+        Value::UserData(_) => false,
+        Value::Error(_) => false,
+    }
+}
+
+fn lua_to_string<'a>(value: Value<'a>, lua_ctx: Context<'a>) -> Result<String> {
+    let lua_string = match value {
+        Value::Nil => "nil".to_owned(),
+        Value::Boolean(boolean_value) => {
+            if boolean_value { "true".to_owned() } else { "false".to_owned() }
+        },
+        Value::Integer(_) => {
+            String::from_lua(value, lua_ctx)?
+        },
+        Value::Number(_) => {
+            String::from_lua(value, lua_ctx)?
+        },
+        Value::String(_) => {
+            String::from_lua(value, lua_ctx)?
+        },
+        Value::Table(_) => {
+            "table".to_owned()
+        },
+        Value::Function(_) => {
+            "function".to_owned()
+        },
+        Value::Thread(_) => todo!(),
+        Value::UserData(_) => todo!(),
+        Value::LightUserData(_) => todo!(),
+        Value::Error(_) => todo!(),
+    };
+    Ok(lua_string)
+}
+
+fn gui(lua: &Lua) -> Result<()> {
+    let mut gui_state = GuiState {
+        dirty: false,
+        focus: Vector::new(),
+        items: Vector::new()
+    };
+    lua.context(|lua_ctx| -> Result<()> {
+        let save_ignores: Table = lua_ctx.globals().get("SaveIgnores")?;
+
+        for pair in lua_ctx.globals().pairs::<Value, Value>() {
+            let (key, value) = pair?;
+            if lua_is_saved_type(&value) && !save_ignores.get(key.clone())? {
+                gui_state.items.push_back((lua_to_string(key, lua_ctx)?, lua_to_string(value, lua_ctx)?));
+            }
+        }
+        Ok(())
+    })?;
+    AppLauncher::with_window(WindowDesc::new(ui_builder))
+        .launch(gui_state)?;
     Ok(())
 }
 
