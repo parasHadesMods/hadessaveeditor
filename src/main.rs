@@ -7,14 +7,14 @@ mod write;
 use anyhow::Result;
 use clap::{arg, Command};
 use druid::im::Vector;
-use druid::{AppLauncher, Data, Lens, Widget, WidgetExt, WindowDesc};
+use druid::{AppLauncher, Color, Data, Env, Lens, Key, theme, Widget, WidgetExt, WindowDesc};
+use druid::lens::{self, LensExt};
 use druid::widget::{Flex, Label, List, Scroll};
 use rlua::{Context, Function, Lua, MultiValue, Table, Value, FromLua};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 
 fn cli() -> Command {
     Command::new("hadessaveeditor")
@@ -51,16 +51,48 @@ fn main() -> Result<()> {
 struct GuiState {
     dirty: bool,
     focus: Vector<String>,
+    selected: Option<usize>,
     items: Vector<(String, String)>
 }
+
+const LABEL_TEXT_COLOR: Key<Color> = Key::new("paradigmsort.hadessaveeditor.label-text-color");
 
 fn ui_builder() -> impl Widget<GuiState> {
     Scroll::new(
         List::new(|| {
             Flex::row()
-                .with_flex_child(Label::new(|item: &(String, String), _env: &_| item.0.clone()).expand_width(), 1.0)
-                .with_flex_child(Label::new(|item: &(String, String), _env: &_| item.1.clone()).expand_width(), 1.0)
-        }).lens(GuiState::items)
+                .with_flex_child(
+                    Label::new(|(_selected, (_idx, item)): &(Option<usize>, (usize, (String, String))), _env: &_| item.0.clone())
+                        .with_text_color(LABEL_TEXT_COLOR)
+                        .on_click(|_ctx, (selected, (idx, item)), _env| {
+                            if selected.unwrap_or(usize::MAX) == *idx {
+                                selected.take();
+                            } else {
+                                selected.replace(*idx);
+                            }
+                        })
+                        .expand_width(), 1.0)
+                .with_flex_child(
+                    Label::new(|(_selected, (_idx, item)): &(Option<usize>, (usize, (String, String))), _env: &_| item.1.clone())
+                    .with_text_color(LABEL_TEXT_COLOR)
+                    .expand_width(), 1.0)
+                .env_scope(|env: &mut Env, (selected, (idx, _item)): &(Option<usize>, (usize, (String, String)))| {
+                    let color = if selected.unwrap_or(usize::MAX) == *idx {
+                        env.get(theme::SELECTION_TEXT_COLOR)
+                    } else {
+                        env.get(theme::LABEL_COLOR)
+                    };
+                    env.set(LABEL_TEXT_COLOR, color)
+                })
+        }).lens(lens::Identity.map(
+            |data: &GuiState| {
+                let indexed_items = Vector::from_iter(
+                    data.items.iter().map(|item| item.clone()).enumerate());
+                (data.selected, indexed_items)
+            },
+            |data: &mut GuiState, updated:(Option<usize>, Vector<(usize, (String, String))>)| {
+                data.selected = updated.0
+            }))
     ).vertical()
 }
 
@@ -112,6 +144,7 @@ fn lua_to_string<'a>(value: Value<'a>, lua_ctx: Context<'a>) -> Result<String> {
 fn gui(lua: &Lua) -> Result<()> {
     let mut gui_state = GuiState {
         dirty: false,
+        selected: None,
         focus: Vector::new(),
         items: Vector::new()
     };
