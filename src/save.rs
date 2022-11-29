@@ -1,4 +1,6 @@
 use crate::read;
+use crate::write;
+
 use std::convert::TryInto;
 use anyhow::{bail, Context, Result};
 
@@ -76,4 +78,40 @@ pub fn read(loadstate: &mut &[u8]) -> Result<HadesSaveV16> {
     start_next_map: start_next_map,
     lua_state_lz4: lua_state_lz4.to_vec()
   })
+}
+
+fn write_string(contents: &mut Vec<u8>, string: &str) {
+  write::u32(contents, string.len() as u32);
+  let mut str_bytes = string.as_bytes().to_owned();
+  write::bytes(contents, &mut str_bytes);
+}
+
+pub fn write (save: &HadesSaveV16) -> Vec<u8> {
+  let mut contents: Vec<u8> = Vec::new();
+  let mut signature = "SGB1".as_bytes().to_owned();
+  write::bytes(&mut contents, &mut signature);
+  let mut checksum = "TODO".as_bytes().to_owned();
+  write::bytes(&mut contents, &mut checksum);
+  write::u32(&mut contents, 16); // version
+  write::u64(&mut contents, save.timestamp);
+  write_string(&mut contents, &save.location);
+  write::u32(&mut contents, save.runs);
+  write::u32(&mut contents, save.active_meta_points);
+  write::u32(&mut contents, save.active_shrine_points);
+  write::byte(&mut contents, if save.god_mode_enabled {1} else {0});
+  write::byte(&mut contents, if save.hell_mode_enabled {1} else {0});
+
+  // lua keys
+  write::u32(&mut contents, save.lua_keys.len() as u32);
+  for lua_key in save.lua_keys.iter() {
+    write_string(&mut contents, lua_key)
+  }
+
+  write_string(&mut contents, &save.current_map_name);
+  write_string(&mut contents, &save.start_next_map);
+
+  write::u32(&mut contents, save.lua_state_lz4.len() as u32);
+  write::bytes(&mut contents, save.lua_state_lz4.clone().as_mut_slice());
+
+  contents
 }
