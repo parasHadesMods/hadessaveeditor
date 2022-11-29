@@ -1,6 +1,6 @@
 mod luabins;
 mod read;
-mod save;
+mod hadesfile;
 mod write;
 
 use anyhow::Result;
@@ -8,7 +8,7 @@ use clap::{arg, Command};
 use rlua::{Function, Lua, MultiValue};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
-use save::UncompressedSize;
+use hadesfile::UncompressedSize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use lz4;
@@ -30,10 +30,10 @@ fn main() -> Result<()> {
     };
 
     let file = read_file(path)?;
-    let mut savedata = save::read(&mut file.as_slice())?;
+    let mut savedata = hadesfile::read(&mut file.as_slice())?;
     let lua_state = lz4::block::decompress(
         &savedata.lua_state_lz4.as_slice(), 
-        Some(save::HadesSaveV16::UNCOMPRESSED_SIZE))?;
+        Some(hadesfile::HadesSaveV16::UNCOMPRESSED_SIZE))?;
 
 
     lua.context(|lua_ctx| -> Result<()> {
@@ -312,7 +312,7 @@ end
         Ok(())
     })?;
 
-    let outfile = save::write(&savedata)?;
+    let outfile = hadesfile::write(&savedata)?;
     write_file(path, outfile)?;
     Ok(())
 }
