@@ -8,7 +8,6 @@ use druid::lens::{self, LensExt};
 use druid::widget::{Button, Flex, Label, List, Scroll, TextBox, Either};
 use hadesfile::HadesSaveV16;
 use rlua::{Context, Lua, Table, Value, FromLua};
-use std::fmt::format;
 use std::fs;
 use std::rc::Rc;
 use std::path::PathBuf;
@@ -51,7 +50,7 @@ fn ui_builder() -> impl Widget<GuiState> {
                     };
                     env.set(LABEL_TEXT_COLOR, color)
                 })
-                .on_click(|_ctx, (selected, (idx, item)), _env| {
+                .on_click(|_ctx, (selected, (idx, _item)), _env| {
                     if selected.unwrap_or(usize::MAX) == *idx {
                         selected.take();
                     } else {
@@ -86,43 +85,49 @@ fn ui_builder() -> impl Widget<GuiState> {
                 }
                 if changed_index != usize:: MAX {
                     data.columns = updated.take(changed_index + 1);
-                    data.lua.context(|lua_ctx| -> Result<()> {
-                        let lua_value_at_path = lua_get_path(lua_ctx, data.lua_path_pointed_by_columns.clone())?;
-                        match lua_value_at_path {
-                            Value::Table(table_value) => {
-                                data.columns.push_back(Column {
-                                    selected: None,
-                                    items: Vector::new()
-                                });
-                                for pair in table_value.pairs::<Value, Value>() {
-                                    let (key, value) = pair?;
-                                    if lua_is_saved_type(&value) {
-                                        data
-                                            .columns[changed_index + 1]
-                                            .items
-                                            .push_back(lua_to_string(key, lua_ctx)?);
+                    if data.columns[changed_index].selected.is_some() {
+                        data.lua.context(|lua_ctx| -> Result<()> {
+                            let lua_value_at_path = lua_get_path(lua_ctx, data.lua_path_pointed_by_columns.clone())?;
+                            match lua_value_at_path {
+                                Value::Table(table_value) => {
+                                    data.columns.push_back(Column {
+                                        selected: None,
+                                        items: Vector::new()
+                                    });
+                                    for pair in table_value.pairs::<Value, Value>() {
+                                        let (key, value) = pair?;
+                                        if lua_is_saved_type(&value) {
+                                            data
+                                                .columns[changed_index + 1]
+                                                .items
+                                                .push_back(lua_to_string(key, lua_ctx)?);
+                                        }
                                     }
-                                }
-                                data.value_pointed_by_columns = None;
-                                data.value_edit_box.clear();
-                                Ok(())
-                            },
-                            _ => {
-                                let lua_string = lua_to_string(lua_value_at_path, lua_ctx)?;
-                                data.value_pointed_by_columns = Some(lua_string.clone());
-                                data.value_edit_box = lua_string;
-                                Ok(())
-                            },
-                        }
-                        
-                    }).unwrap() // TODO!
+                                    data.value_pointed_by_columns = None;
+                                    data.value_edit_box.clear();
+                                    Ok(())
+                                },
+                                _ => {
+                                    let lua_string = lua_to_string(lua_value_at_path, lua_ctx)?;
+                                    data.value_pointed_by_columns = Some(lua_string.clone());
+                                    data.value_edit_box = lua_string;
+                                    Ok(())
+                                },
+                            }
+                        }).unwrap() // TODO!
+                    }
                 }
             }
         }
     ));
 
-    let fileRow =
+    let file_row =
         Flex::row()
+            .with_flex_child(Either::new(
+                |dirty: &bool, _env: &_| dirty.clone(),
+                Label::new("You have unsaved changes."),
+                Label::new("All changes have been saved!")
+            ).lens(GuiState::dirty), 1.)
             .with_child(Button::new("Save").on_click(|_ctx, state: &mut GuiState, _env| {
                 if state.dirty {
                     state.savedata.lua_state = luastate::save(state.lua.as_ref()).unwrap(); // TODO
@@ -131,24 +136,24 @@ fn ui_builder() -> impl Widget<GuiState> {
                     state.dirty = false;
                 }
             }))
-            .with_child(Either::new(
-                |dirty: &bool, _env: &_| dirty.clone(),
-                Label::new("You have unsaved changes."),
-                Label::new("All changes have been saved!")
-            ).lens(GuiState::dirty));
+            .padding(5.);
 
-    let pathRow =
+    let path_row =
         Flex::row()
             .with_child(Label::new("Focus"))
-            .with_child(Label::new(| lua_path: &Vector<String>, _env: &_ | {
-                lua_path.iter().map(|item| item.to_owned()).collect::<Vec<String>>().join(".")
-            })
-            .lens(GuiState::lua_path_pointed_by_columns));
+            .with_spacer(8.)
+            .with_flex_child(
+                Label::new(| lua_path: &Vector<String>, _env: &_ | {
+                    lua_path.iter().map(|item| item.to_owned()).collect::<Vec<String>>().join(".")
+                })
+                .lens(GuiState::lua_path_pointed_by_columns), 1.)
+            .padding(5.);
 
-    let valueRow  =
+    let value_row  =
         Flex::row()
             .with_child(Label::new("Value"))
-            .with_child(TextBox::new().lens(GuiState::value_edit_box))
+            .with_spacer(8.)
+            .with_flex_child(TextBox::new().lens(GuiState::value_edit_box), 1.)
             .with_child(Button::new("Apply")
                 .on_click(|_ctx, state: &mut GuiState, _env| {
                     state.lua.context(|lua_ctx| {
@@ -160,13 +165,14 @@ fn ui_builder() -> impl Widget<GuiState> {
                         state.dirty = true;
                         // TODO: refresh state
                     })
-                }));
+                }))
+            .padding(5.);
 
     Flex::column()
         .cross_axis_alignment(druid::widget::CrossAxisAlignment::Start)
-        .with_child(fileRow)
-        .with_child(pathRow)
-        .with_child(valueRow)
+        .with_child(file_row)
+        .with_child(path_row)
+        .with_child(value_row)
         .with_flex_child(columns, 1.0)
 }
 
