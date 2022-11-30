@@ -81,7 +81,7 @@ fn ui_builder() -> impl Widget<GuiState> {
                                     selected: None,
                                     items: Vector::new()
                                 });
-                                for pair in lua_ctx.globals().pairs::<Value, Value>() {
+                                for pair in table_value.pairs::<Value, Value>() {
                                     let (key, value) = pair?;
                                     if lua_is_saved_type(&value) {
                                         data
