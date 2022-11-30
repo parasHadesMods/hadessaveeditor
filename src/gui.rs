@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use druid::im::Vector;
 use druid::{AppLauncher, Color, Data, Env, Lens, Key, theme, Widget, WidgetExt, WindowDesc};
 use druid::lens::{self, LensExt};
-use druid::widget::{Label, List, Scroll};
+use druid::widget::{Flex, Label, List, Scroll};
 use rlua::{Context, Lua, Table, Value, FromLua};
 use std::rc::Rc;
 
@@ -11,6 +11,7 @@ struct GuiState {
     lua: Rc<Lua>,
     generation: u64,
     columns: Vector<Column>,
+    lua_path_pointed_by_columns: Vector<String>,
     value_pointed_by_columns: Option<String>
 }
 
@@ -23,7 +24,7 @@ struct Column {
 const LABEL_TEXT_COLOR: Key<Color> = Key::new("paradigmsort.hadessaveeditor.label-text-color");
 
 fn ui_builder() -> impl Widget<GuiState> {
-    List::new(|| {
+    let columns = List::new(|| {
         Scroll::new(
         List::new( || {
             Label::new(|(_selected, (_idx, name)): &(Option<usize>, (usize, String)), _env: &_| name.clone())
@@ -43,7 +44,7 @@ fn ui_builder() -> impl Widget<GuiState> {
                         selected.replace(*idx);
                     }
                 })
-        })).lens(lens::Identity.map(
+        })).vertical().lens(lens::Identity.map(
             |data: &Column| { (
                 data.selected,
                 Vector::from_iter(data.items.iter().map(|item| item.clone()).enumerate()))
@@ -59,22 +60,21 @@ fn ui_builder() -> impl Widget<GuiState> {
         |data: &mut GuiState, updated: Vector<Column> | {
             if ! data.columns.same(&updated) {
                 let mut changed_index = usize::MAX;
-                let mut lua_path = Vector::new(); 
                 for (index, (old, new)) in data.columns.iter().zip(updated.iter()).enumerate() {
-                    for selected_idx in new.selected {
-                        lua_path.push_back(old.items[selected_idx].clone())
-                    }
                     if old.selected != new.selected {
                         changed_index = index;
-                        println!("path {:#?}", lua_path);
-                        println!("changed {}", changed_index);
+                        data.lua_path_pointed_by_columns = data.lua_path_pointed_by_columns.take(changed_index);
+                        for selected_idx in new.selected {
+                            data.lua_path_pointed_by_columns.push_back(new.items[selected_idx].clone())
+                        }
+                        println!("{:?}",data.lua_path_pointed_by_columns);
                         break;
                     }
                 }
                 if (changed_index != usize:: MAX) {
                     data.columns = updated.take(changed_index + 1);
                     data.lua.context(|lua_ctx| -> Result<()> {
-                        let lua_value_at_path = lua_get_path(lua_ctx, lua_path)?;
+                        let lua_value_at_path = lua_get_path(lua_ctx, data.lua_path_pointed_by_columns.clone())?;
                         match lua_value_at_path {
                             Value::Table(table_value) => {
                                 data.columns.push_back(Column {
@@ -103,7 +103,17 @@ fn ui_builder() -> impl Widget<GuiState> {
                 }
             }
         }
-    ))
+    ));
+
+    Flex::column()
+        .cross_axis_alignment(druid::widget::CrossAxisAlignment::Start)
+        .with_flex_child(columns, 1.0)
+        .with_child(
+            Label::new(| lua_path: &Vector<String>, _env: &_ | {
+                lua_path.iter().map(|item| item.to_owned()).collect::<Vec<String>>().join(".")
+            })
+                .lens(GuiState::lua_path_pointed_by_columns)
+        )
 }
 
 fn lua_is_saved_type(value: &Value) -> bool {
@@ -169,6 +179,7 @@ pub fn gui(lua: Lua) -> Result<()> {
         lua: Rc::new(lua),
         generation: 0,
         columns: Vector::new(),
+        lua_path_pointed_by_columns: Vector::new(),
         value_pointed_by_columns: None
     };
     gui_state.columns.push_back(Column {
