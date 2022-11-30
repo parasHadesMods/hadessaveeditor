@@ -29,12 +29,12 @@ fn main() -> Result<()> {
     };
 
     let file = read_file(path)?;
-    let mut savedata = hadesfile::read(&mut file.as_slice())?;
+    let savedata = hadesfile::read(&mut file.as_slice())?;
 
     luastate::initialize(&lua)?;
     luastate::load(&lua, &mut savedata.lua_state.as_slice())?;
 
-    gui::gui(lua)?;
+    gui::gui(lua, savedata, path.to_owned())?;
 
     // savedata.lua_state = luastate::save(&lua)?;
 

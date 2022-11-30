@@ -1,18 +1,31 @@
+use crate::hadesfile;
+use crate::luastate;
+
 use anyhow::{bail, Result};
 use druid::im::Vector;
 use druid::{AppLauncher, Color, Data, Env, Lens, Key, theme, Widget, WidgetExt, WindowDesc};
 use druid::lens::{self, LensExt};
-use druid::widget::{Flex, Label, List, Scroll};
+use druid::widget::{Button, Flex, Label, List, Scroll, TextBox, Either};
+use hadesfile::HadesSaveV16;
 use rlua::{Context, Lua, Table, Value, FromLua};
+use std::fs;
 use std::rc::Rc;
+use std::path::PathBuf;
+
 
 #[derive(Clone, Data, Lens)]
 struct GuiState {
     lua: Rc<Lua>,
+    #[data(ignore)]
+    path: PathBuf,
+    #[data(ignore)]
+    savedata: HadesSaveV16,
+    dirty: bool,
     generation: u64,
     columns: Vector<Column>,
     lua_path_pointed_by_columns: Vector<String>,
-    value_pointed_by_columns: Option<String>
+    value_pointed_by_columns: Option<String>,
+    value_edit_box: String
 }
 
 #[derive(Clone, Data, Lens)]
@@ -90,10 +103,13 @@ fn ui_builder() -> impl Widget<GuiState> {
                                     }
                                 }
                                 data.value_pointed_by_columns = None;
+                                data.value_edit_box.clear();
                                 Ok(())
                             },
                             _ => {
-                                data.value_pointed_by_columns = Some(lua_to_string(lua_value_at_path, lua_ctx)?);
+                                let lua_string = lua_to_string(lua_value_at_path, lua_ctx)?;
+                                data.value_pointed_by_columns = Some(lua_string.clone());
+                                data.value_edit_box = lua_string;
                                 Ok(())
                             },
                         }
@@ -104,22 +120,53 @@ fn ui_builder() -> impl Widget<GuiState> {
         }
     ));
 
+    let fileRow =
+        Flex::row()
+            .with_child(Button::new("Save").on_click(|_ctx, state: &mut GuiState, _env| {
+                if state.dirty {
+                    state.savedata.lua_state = luastate::save(state.lua.as_ref()).unwrap(); // TODO
+                    let outfile = hadesfile::write(&state.savedata).unwrap(); // TODO
+                    fs::write(&state.path, outfile).unwrap(); // TODO
+                    state.dirty = false;
+                }
+            }))
+            .with_child(Either::new(
+                |dirty: &bool, _env: &_| dirty.clone(),
+                Label::new("You have unsaved changes."),
+                Label::new("All changes have been saved!")
+            ).lens(GuiState::dirty));
+
     let pathRow =
-        Label::new(| lua_path: &Vector<String>, _env: &_ | {
-            lua_path.iter().map(|item| item.to_owned()).collect::<Vec<String>>().join(".")
-        })
-        .lens(GuiState::lua_path_pointed_by_columns);
+        Flex::row()
+            .with_child(Label::new("Focus"))
+            .with_child(Label::new(| lua_path: &Vector<String>, _env: &_ | {
+                lua_path.iter().map(|item| item.to_owned()).collect::<Vec<String>>().join(".")
+            })
+            .lens(GuiState::lua_path_pointed_by_columns));
 
     let valueRow  =
-        Label::new(|lua_value: &Option<String>, _env: &_| {
-            lua_value.clone().unwrap_or("".to_owned())
-        }).lens(GuiState::value_pointed_by_columns);
+        Flex::row()
+            .with_child(Label::new("Value"))
+            .with_child(TextBox::new().lens(GuiState::value_edit_box))
+            .with_child(Button::new("Apply")
+                .on_click(|_ctx, state: &mut GuiState, _env| {
+                    state.lua.context(|lua_ctx| {
+                        let mut command: String = state.lua_path_pointed_by_columns.iter().map(|item| item.to_owned()).collect::<Vec<String>>().join(".");
+                        command.push_str(" = ");
+                        command.push_str(&state.value_edit_box);
+
+                        lua_ctx.load(&command).exec().unwrap(); // TODO!
+                        state.dirty = true;
+                        // TODO: refresh state
+                    })
+                }));
 
     Flex::column()
         .cross_axis_alignment(druid::widget::CrossAxisAlignment::Start)
-        .with_flex_child(columns, 1.0)
+        .with_child(fileRow)
         .with_child(pathRow)
         .with_child(valueRow)
+        .with_flex_child(columns, 1.0)
 }
 
 fn lua_is_saved_type(value: &Value) -> bool {
@@ -180,13 +227,17 @@ fn lua_to_string<'a>(value: Value<'a>, lua_ctx: Context<'a>) -> Result<String> {
     Ok(lua_string)
 }
 
-pub fn gui(lua: Lua) -> Result<()> {
+pub fn gui(lua: Lua, savedata: HadesSaveV16, path: PathBuf) -> Result<()> {
     let mut gui_state = GuiState {
         lua: Rc::new(lua),
+        path: path,
+        savedata: savedata,
+        dirty: false,
         generation: 0,
         columns: Vector::new(),
         lua_path_pointed_by_columns: Vector::new(),
-        value_pointed_by_columns: None
+        value_pointed_by_columns: None,
+        value_edit_box: String::new()
     };
     gui_state.columns.push_back(Column {
         selected: None,

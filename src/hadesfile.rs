@@ -10,6 +10,7 @@ pub trait UncompressedSize {
   const UNCOMPRESSED_SIZE: i32;
 }
 
+#[derive(Clone)]
 pub struct HadesSaveV16 {
   pub version: u32,
   pub timestamp: u64,
