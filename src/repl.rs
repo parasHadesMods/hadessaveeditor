@@ -1,9 +1,15 @@
+use crate::hadesfile;
+use crate::luastate;
+
 use anyhow::Result;
+use hadesfile::HadesSaveV16;
 use rlua::{Function, Lua, MultiValue};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
+use std::fs;
+use std::path::PathBuf;
 
-fn repl(lua: &Lua) -> Result<()> {
+pub fn repl(lua: Lua, savedata: HadesSaveV16, path: PathBuf) -> Result<()> {
     let mut editor = Editor::<()>::new()?;
     loop {
         let readline = editor.readline(">> ");
@@ -24,7 +30,12 @@ fn repl(lua: &Lua) -> Result<()> {
             Err(ReadlineError::Interrupted) => {
                 break
             },
-            Err(ReadlineError::Eof) => {
+            Err(ReadlineError::Eof) => { 
+                println!("Saving {}", path.display());
+                let mut savedata = savedata.clone();
+                savedata.lua_state = luastate::save(&lua)?;
+                let outfile = hadesfile::write(&savedata)?;
+                fs::write(&path, outfile)?;
                 println!("Goodbye!");
                 break
             },

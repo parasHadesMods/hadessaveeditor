@@ -15,7 +15,8 @@ use std::fs;
 fn cli() -> Command {
     Command::new("hadessaveeditor")
         .about("A save file editor for hades")
-        .arg(arg!(file: [FILE]).value_parser(clap::value_parser!(PathBuf)))
+        .arg(arg!(file: [FILE] "The hades save file to open.").value_parser(clap::value_parser!(PathBuf)))
+        .arg(arg!(-r --repl "Starts the command-line repl instead of the gui."))
         .arg_required_else_help(true)
 }
 
@@ -34,12 +35,12 @@ fn main() -> Result<()> {
     luastate::initialize(&lua)?;
     luastate::load(&lua, &mut savedata.lua_state.as_slice())?;
 
-    gui::gui(lua, savedata, path.to_owned())?;
+    if matches.get_flag("repl") {
+        repl::repl(lua, savedata, path.to_owned())?;
+    } else {
+        gui::gui(lua, savedata, path.to_owned())?;
+    }
 
-    // savedata.lua_state = luastate::save(&lua)?;
-
-    // let outfile = hadesfile::write(&savedata)?;
-    // write_file(path, outfile)?;
     Ok(())
 }
 
