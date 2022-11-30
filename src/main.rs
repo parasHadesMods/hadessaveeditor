@@ -44,8 +44,6 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-
-
 const BYTE_ORDER_MARK: &[u8] = "\u{feff}".as_bytes();
 fn read_file<P: AsRef<Path>>(path: P) -> Result<Vec<u8>> {
   let file = fs::read(path)?;
@@ -54,8 +52,4 @@ fn read_file<P: AsRef<Path>>(path: P) -> Result<Vec<u8>> {
   } else {
      Ok(file.to_vec())
   }
-}
-
-fn write_file<P: AsRef<Path>>(path: P, data: Vec<u8>) -> Result<()> {
-    fs::write(path, data).map_err(anyhow::Error::new)
 }

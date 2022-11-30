@@ -3,11 +3,12 @@ use crate::luastate;
 
 use anyhow::{bail, Result};
 use druid::im::Vector;
-use druid::{AppLauncher, Color, Data, Env, Lens, Key, theme, Widget, WidgetExt, WindowDesc};
+use druid::{AppLauncher, Color, Data, Env, Lens, Key, Size, theme, Widget, WidgetExt, WindowDesc};
 use druid::lens::{self, LensExt};
 use druid::widget::{Button, Flex, Label, List, Scroll, TextBox, Either};
 use hadesfile::HadesSaveV16;
 use rlua::{Context, Lua, Table, Value, FromLua};
+use std::fmt::format;
 use std::fs;
 use std::rc::Rc;
 use std::path::PathBuf;
@@ -256,7 +257,14 @@ pub fn gui(lua: Lua, savedata: HadesSaveV16, path: PathBuf) -> Result<()> {
         Ok(())
     })?;
 
-    AppLauncher::with_window(WindowDesc::new(ui_builder))
+    let main_window = WindowDesc::new(ui_builder)
+        .title(|state: &GuiState, _env: &_| format!(
+            "Hades Save Editor - {}{}",
+            state.path.display(),
+            if state.dirty {"*"} else {""}))
+        .window_size(Size::new(900.0, 800.0));
+
+    AppLauncher::with_window(main_window)
         .launch(gui_state)?;
     Ok(())
 }
