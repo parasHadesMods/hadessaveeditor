@@ -67,11 +67,10 @@ fn ui_builder() -> impl Widget<GuiState> {
                         for selected_idx in new.selected {
                             data.lua_path_pointed_by_columns.push_back(new.items[selected_idx].clone())
                         }
-                        println!("{:?}",data.lua_path_pointed_by_columns);
                         break;
                     }
                 }
-                if (changed_index != usize:: MAX) {
+                if changed_index != usize:: MAX {
                     data.columns = updated.take(changed_index + 1);
                     data.lua.context(|lua_ctx| -> Result<()> {
                         let lua_value_at_path = lua_get_path(lua_ctx, data.lua_path_pointed_by_columns.clone())?;
@@ -105,15 +104,22 @@ fn ui_builder() -> impl Widget<GuiState> {
         }
     ));
 
+    let pathRow =
+        Label::new(| lua_path: &Vector<String>, _env: &_ | {
+            lua_path.iter().map(|item| item.to_owned()).collect::<Vec<String>>().join(".")
+        })
+        .lens(GuiState::lua_path_pointed_by_columns);
+
+    let valueRow  =
+        Label::new(|lua_value: &Option<String>, _env: &_| {
+            lua_value.clone().unwrap_or("".to_owned())
+        }).lens(GuiState::value_pointed_by_columns);
+
     Flex::column()
         .cross_axis_alignment(druid::widget::CrossAxisAlignment::Start)
         .with_flex_child(columns, 1.0)
-        .with_child(
-            Label::new(| lua_path: &Vector<String>, _env: &_ | {
-                lua_path.iter().map(|item| item.to_owned()).collect::<Vec<String>>().join(".")
-            })
-                .lens(GuiState::lua_path_pointed_by_columns)
-        )
+        .with_child(pathRow)
+        .with_child(valueRow)
 }
 
 fn lua_is_saved_type(value: &Value) -> bool {
