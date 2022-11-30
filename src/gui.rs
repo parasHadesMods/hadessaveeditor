@@ -61,16 +61,18 @@ fn ui_builder() -> impl Widget<GuiState> {
                 let mut changed_index = usize::MAX;
                 let mut lua_path = Vector::new(); 
                 for (index, (old, new)) in data.columns.iter().zip(updated.iter()).enumerate() {
-                    for selected_idx in old.selected {
+                    for selected_idx in new.selected {
                         lua_path.push_back(old.items[selected_idx].clone())
                     }
                     if old.selected != new.selected {
                         changed_index = index;
+                        println!("path {:#?}", lua_path);
+                        println!("changed {}", changed_index);
                         break;
                     }
                 }
                 if (changed_index != usize:: MAX) {
-                    data.columns = data.columns.take(changed_index + 1);
+                    data.columns = updated.take(changed_index + 1);
                     data.lua.context(|lua_ctx| -> Result<()> {
                         let lua_value_at_path = lua_get_path(lua_ctx, lua_path)?;
                         match lua_value_at_path {
