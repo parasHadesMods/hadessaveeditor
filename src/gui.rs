@@ -1,8 +1,8 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use druid::im::Vector;
 use druid::{AppLauncher, Color, Data, Env, Lens, Key, theme, Widget, WidgetExt, WindowDesc};
 use druid::lens::{self, LensExt};
-use druid::widget::{Flex, Label, List, Scroll};
+use druid::widget::{Label, List, Scroll};
 use rlua::{Context, Lua, Table, Value, FromLua};
 use std::rc::Rc;
 
@@ -10,7 +10,8 @@ use std::rc::Rc;
 struct GuiState {
     lua: Rc<Lua>,
     generation: u64,
-    columns: Vector<Column>
+    columns: Vector<Column>,
+    value_pointed_by_columns: Option<String>
 }
 
 #[derive(Clone, Data, Lens)]
@@ -48,14 +49,59 @@ fn ui_builder() -> impl Widget<GuiState> {
                 Vector::from_iter(data.items.iter().map(|item| item.clone()).enumerate()))
             },
             |data: &mut Column, updated: (Option<usize>, Vector<(usize, String)>) | {
-                if data.selected != updated.0 {
-                    data.selected = updated.0
-                }
+                data.selected = updated.0
             }
         ))
     })
     .horizontal()
-    .lens(GuiState::columns)
+    .lens(lens::Identity.map(
+        |data: &GuiState | { data.columns.clone() },
+        |data: &mut GuiState, updated: Vector<Column> | {
+            if ! data.columns.same(&updated) {
+                let mut changed_index = usize::MAX;
+                let mut lua_path = Vector::new(); 
+                for (index, (old, new)) in data.columns.iter().zip(updated.iter()).enumerate() {
+                    for selected_idx in old.selected {
+                        lua_path.push_back(old.items[selected_idx].clone())
+                    }
+                    if old.selected != new.selected {
+                        changed_index = index;
+                        break;
+                    }
+                }
+                if (changed_index != usize:: MAX) {
+                    data.columns = data.columns.take(changed_index + 1);
+                    data.lua.context(|lua_ctx| -> Result<()> {
+                        let lua_value_at_path = lua_get_path(lua_ctx, lua_path)?;
+                        match lua_value_at_path {
+                            Value::Table(table_value) => {
+                                data.columns.push_back(Column {
+                                    selected: None,
+                                    items: Vector::new()
+                                });
+                                for pair in lua_ctx.globals().pairs::<Value, Value>() {
+                                    let (key, value) = pair?;
+                                    if lua_is_saved_type(&value) {
+                                        data
+                                            .columns[changed_index + 1]
+                                            .items
+                                            .push_back(lua_to_string(key, lua_ctx)?);
+                                    }
+                                }
+                                data.value_pointed_by_columns = None;
+                                Ok(())
+                            },
+                            _ => {
+                                data.value_pointed_by_columns = Some(lua_to_string(lua_value_at_path, lua_ctx)?);
+                                Ok(())
+                            },
+                        }
+                        
+                    }).unwrap() // TODO!
+                }
+            }
+        }
+    ))
 }
 
 fn lua_is_saved_type(value: &Value) -> bool {
@@ -72,6 +118,19 @@ fn lua_is_saved_type(value: &Value) -> bool {
         Value::UserData(_) => false,
         Value::Error(_) => false,
     }
+}
+
+fn lua_get_path(lua_ctx: Context, lua_path: Vector<String>) -> Result<Value> {
+    let mut current_value: Value = Value::Table(lua_ctx.globals());
+    for segment in lua_path {
+        match current_value {
+            Value::Table(table_value) => {
+                current_value = table_value.get(segment)?;
+            },
+            _ => bail!("not a table! {:?}", current_value)
+        }
+    }
+    Ok(current_value)
 }
 
 fn lua_to_string<'a>(value: Value<'a>, lua_ctx: Context<'a>) -> Result<String> {
@@ -107,7 +166,8 @@ pub fn gui(lua: Lua) -> Result<()> {
     let mut gui_state = GuiState {
         lua: Rc::new(lua),
         generation: 0,
-        columns: Vector::new()
+        columns: Vector::new(),
+        value_pointed_by_columns: None
     };
     gui_state.columns.push_back(Column {
         selected: None,
