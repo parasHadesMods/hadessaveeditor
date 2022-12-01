@@ -23,7 +23,7 @@ struct GuiState {
     dirty: bool,
     generation: u64,
     columns: Vector<Column>,
-    lua_path_pointed_by_columns: Vector<String>,
+    lua_path_pointed_by_columns: Vector<TableKey>,
     value_pointed_by_columns: Option<String>,
     value_edit_box: String
 }
@@ -31,8 +31,14 @@ struct GuiState {
 #[derive(Clone, Data, Lens)]
 struct Column {
     selected: Option<usize>,
-    items: Vector<String>
+    items: Vector<TableKey>
 }
+
+#[derive(Clone, Data)]
+enum TableKey {
+    StringKey(String),
+    NumberKey(i64)
+} 
 
 const LABEL_TEXT_COLOR: Key<Color> = Key::new("paradigmsort.hadessaveeditor.label-text-color");
 
@@ -40,9 +46,14 @@ fn ui_builder() -> impl Widget<GuiState> {
     let columns = List::new(|| {
         Scroll::new(
         List::new( || {
-            Label::new(|(_selected, (_idx, name)): &(Option<usize>, (usize, String)), _env: &_| name.clone())
+            Label::new(|(_selected, (_idx, name)): &(Option<usize>, (usize, TableKey)), _env: &_| {
+                match name {
+                    TableKey::StringKey(string_key) => string_key.clone(),
+                    TableKey::NumberKey(number_key) => format!("[{}]", number_key),
+                }
+            })
                 .with_text_color(LABEL_TEXT_COLOR)
-                .env_scope(|env: &mut Env, (selected, (idx, _item)): &(Option<usize>, (usize, String))| {
+                .env_scope(|env: &mut Env, (selected, (idx, _item)): &(Option<usize>, (usize, TableKey))| {
                     let color = if selected.unwrap_or(usize::MAX) == *idx {
                         env.get(theme::SELECTION_TEXT_COLOR)
                     } else {
@@ -62,7 +73,7 @@ fn ui_builder() -> impl Widget<GuiState> {
                 data.selected,
                 Vector::from_iter(data.items.iter().map(|item| item.clone()).enumerate()))
             },
-            |data: &mut Column, updated: (Option<usize>, Vector<(usize, String)>) | {
+            |data: &mut Column, updated: (Option<usize>, Vector<(usize, TableKey)>) | {
                 data.selected = updated.0
             }
         ))
@@ -100,7 +111,7 @@ fn ui_builder() -> impl Widget<GuiState> {
                                             data
                                                 .columns[changed_index + 1]
                                                 .items
-                                                .push_back(lua_to_string(key, lua_ctx)?);
+                                                .push_back(lua_to_table_key(key, lua_ctx)?);
                                         }
                                     }
                                     data.value_pointed_by_columns = None;
@@ -143,8 +154,8 @@ fn ui_builder() -> impl Widget<GuiState> {
             .with_child(Label::new("Focus"))
             .with_spacer(8.)
             .with_flex_child(
-                Label::new(| lua_path: &Vector<String>, _env: &_ | {
-                    lua_path.iter().map(|item| item.to_owned()).collect::<Vec<String>>().join(".")
+                Label::new(| lua_path: &Vector<TableKey>, _env: &_ | {
+                    lua_path_as_string(lua_path)
                 })
                 .lens(GuiState::lua_path_pointed_by_columns), 1.)
             .padding(5.);
@@ -157,7 +168,7 @@ fn ui_builder() -> impl Widget<GuiState> {
             .with_child(Button::new("Apply")
                 .on_click(|_ctx, state: &mut GuiState, _env| {
                     state.lua.context(|lua_ctx| {
-                        let mut command: String = state.lua_path_pointed_by_columns.iter().map(|item| item.to_owned()).collect::<Vec<String>>().join(".");
+                        let mut command: String = lua_path_as_string(&state.lua_path_pointed_by_columns);
                         command.push_str(" = ");
                         command.push_str(&state.value_edit_box);
 
@@ -192,17 +203,42 @@ fn lua_is_saved_type(value: &Value) -> bool {
     }
 }
 
-fn lua_get_path(lua_ctx: Context, lua_path: Vector<String>) -> Result<Value> {
+fn lua_get_path<'a>(lua_ctx: Context<'a>, lua_path: Vector<TableKey>) -> Result<Value<'a>> {
     let mut current_value: Value = Value::Table(lua_ctx.globals());
     for segment in lua_path {
         match current_value {
             Value::Table(table_value) => {
-                current_value = table_value.get(segment)?;
+                match segment {
+                    TableKey::NumberKey(i) => {
+                        current_value = table_value.get(i)?;
+                    },
+                    TableKey::StringKey(s) => {
+                        current_value = table_value.get(s)?;
+                    }
+                }
             },
             _ => bail!("not a table! {:?}", current_value)
         }
     }
     Ok(current_value)
+}
+
+fn lua_path_as_string(lua_path: &Vector<TableKey>) -> String {
+    let mut path_string: String = "".to_owned();
+    for segment in lua_path {
+        match segment {
+            TableKey::NumberKey(i) => {
+                path_string.push_str(&format!("[{}]", i))
+            },
+            TableKey::StringKey(s) => {
+                if path_string != "" {
+                    path_string.push_str(".");
+                }
+                path_string.push_str(&s);
+            }
+        }
+    }
+    path_string
 }
 
 fn lua_to_string<'a>(value: Value<'a>, lua_ctx: Context<'a>) -> Result<String> {
@@ -234,6 +270,15 @@ fn lua_to_string<'a>(value: Value<'a>, lua_ctx: Context<'a>) -> Result<String> {
     Ok(lua_string)
 }
 
+fn lua_to_table_key<'a>(value: Value<'a>, lua_ctx: Context<'a>) -> Result<TableKey> {
+    let table_key = match value {
+        Value::Integer(i) => TableKey::NumberKey(i),
+        Value::String(_) => TableKey::StringKey(String::from_lua(value, lua_ctx)?),
+        _ => todo!()
+    };
+    Ok(table_key)
+}
+
 pub fn gui(lua: Lua, savedata: HadesSaveV16, path: PathBuf) -> Result<()> {
     let mut gui_state = GuiState {
         lua: Rc::new(lua),
@@ -257,7 +302,7 @@ pub fn gui(lua: Lua, savedata: HadesSaveV16, path: PathBuf) -> Result<()> {
         for pair in lua_ctx.globals().pairs::<Value, Value>() {
             let (key, value) = pair?;
             if lua_is_saved_type(&value) && !save_ignores.get(key.clone())? {
-                gui_state.columns[0].items.push_back(lua_to_string(key, lua_ctx)?);
+                gui_state.columns[0].items.push_back(lua_to_table_key(key, lua_ctx)?);
             }
         }
         Ok(())
