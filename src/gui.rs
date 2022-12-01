@@ -34,7 +34,7 @@ struct Column {
     items: Vector<TableKey>
 }
 
-#[derive(Clone, Data)]
+#[derive(Clone, Data, PartialEq, PartialOrd, Eq, Ord)]
 enum TableKey {
     StringKey(String),
     NumberKey(i64)
@@ -114,6 +114,7 @@ fn ui_builder() -> impl Widget<GuiState> {
                                                 .push_back(lua_to_table_key(key, lua_ctx)?);
                                         }
                                     }
+                                    data.columns[changed_index + 1].items.sort();
                                     data.value_pointed_by_columns = None;
                                     data.value_edit_box.clear();
                                     Ok(())
@@ -305,6 +306,7 @@ pub fn gui(lua: Lua, savedata: HadesSaveV16, path: PathBuf) -> Result<()> {
                 gui_state.columns[0].items.push_back(lua_to_table_key(key, lua_ctx)?);
             }
         }
+        gui_state.columns[0].items.sort();
         Ok(())
     })?;
 
