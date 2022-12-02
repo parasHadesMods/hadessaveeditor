@@ -219,7 +219,7 @@ fn ui_builder() -> impl Widget<GuiState> {
                     let mut command: String = lua_path_as_string(&state.lua_path_pointed_by_columns);
                     command.push_str(" = ");
                     command.push_str(&state.value_edit_box);
-                    state.run_command(&command);
+                    state.run_command(&command).unwrap(); // TODO
                 }))
             .padding(5.);
 
