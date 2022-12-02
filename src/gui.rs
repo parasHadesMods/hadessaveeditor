@@ -21,7 +21,6 @@ struct GuiState {
     #[data(ignore)]
     savedata: HadesSaveV16,
     dirty: bool,
-    generation: u64,
     columns: Vector<Column>,
     lua_path_pointed_by_columns: Vector<TableKey>,
     value_pointed_by_columns: Option<String>,
@@ -329,7 +328,6 @@ pub fn gui(lua: Lua, savedata: HadesSaveV16, path: PathBuf) -> Result<()> {
         path: path,
         savedata: savedata,
         dirty: false,
-        generation: 0,
         columns: Vector::new(),
         lua_path_pointed_by_columns: Vector::new(),
         value_pointed_by_columns: None,
