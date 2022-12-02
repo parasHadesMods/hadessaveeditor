@@ -28,6 +28,54 @@ struct GuiState {
     value_edit_box: String
 }
 
+impl GuiState {
+    fn run_command(self: &mut GuiState, command: &str) -> Result<()> {
+        self.lua.context(|lua_ctx| -> Result<()> {
+            lua_ctx.load(command).exec().map_err(anyhow::Error::new)
+        })?;
+        self.dirty = true;
+        self.sync()
+    }
+    fn sync(self: &mut GuiState) -> Result<()> {
+        self.columns = Vector::new();
+        self.lua.context(|lua_ctx| -> Result<()> {
+            let save_ignores: Table = lua_ctx.globals().get("SaveIgnores")?;
+
+            let mut lua_path: Vector<TableKey> = Vector::new();
+            let mut idx = 0;
+            let mut lua_path_iter = self.lua_path_pointed_by_columns.iter();
+            loop {
+                let lua_value = lua_get_path(lua_ctx, lua_path.clone())?;
+                match lua_value {
+                    Value::Table(table_value) => {
+                        self.columns.push_back(Column { selected: None, items: Vector::new() });
+                        for pair in table_value.pairs::<Value, Value>() {
+                            let (key, value) = pair?;
+                            if lua_is_saved_type(&value) && (idx != 1 ||!save_ignores.get(key.clone())?) {
+                                self.columns[idx].items.push_back(lua_to_table_key(key, lua_ctx)?);
+                            }
+                        }
+                        self.columns[idx].items.sort();
+                    },
+                    _ => {
+                        self.value_pointed_by_columns = Some(lua_to_string(lua_value, lua_ctx)?);
+                    }
+                }
+                match lua_path_iter.next() {
+                    Some(segment) => {
+                        lua_path.push_back(segment.to_owned());
+                        idx += 1;
+                    },
+                    None => {
+                        break;
+                    },
+                }
+            };
+            Ok(())
+        })
+    }
+}
+
 #[derive(Clone, Data, Lens)]
 struct Column {
     selected: Option<usize>,
@@ -168,15 +216,10 @@ fn ui_builder() -> impl Widget<GuiState> {
             .with_flex_child(TextBox::new().lens(GuiState::value_edit_box), 1.)
             .with_child(Button::new("Apply")
                 .on_click(|_ctx, state: &mut GuiState, _env| {
-                    state.lua.context(|lua_ctx| {
-                        let mut command: String = lua_path_as_string(&state.lua_path_pointed_by_columns);
-                        command.push_str(" = ");
-                        command.push_str(&state.value_edit_box);
-
-                        lua_ctx.load(&command).exec().unwrap(); // TODO!
-                        state.dirty = true;
-                        // TODO: refresh state
-                    })
+                    let mut command: String = lua_path_as_string(&state.lua_path_pointed_by_columns);
+                    command.push_str(" = ");
+                    command.push_str(&state.value_edit_box);
+                    state.run_command(&command);
                 }))
             .padding(5.);
 
@@ -292,23 +335,7 @@ pub fn gui(lua: Lua, savedata: HadesSaveV16, path: PathBuf) -> Result<()> {
         value_pointed_by_columns: None,
         value_edit_box: String::new()
     };
-    gui_state.columns.push_back(Column {
-        selected: None,
-        items: Vector::new()
-    });
-
-    gui_state.lua.context(|lua_ctx| -> Result<()> {
-        let save_ignores: Table = lua_ctx.globals().get("SaveIgnores")?;
-
-        for pair in lua_ctx.globals().pairs::<Value, Value>() {
-            let (key, value) = pair?;
-            if lua_is_saved_type(&value) && !save_ignores.get(key.clone())? {
-                gui_state.columns[0].items.push_back(lua_to_table_key(key, lua_ctx)?);
-            }
-        }
-        gui_state.columns[0].items.sort();
-        Ok(())
-    })?;
+    gui_state.sync();
 
     let main_window = WindowDesc::new(ui_builder)
         .title(|state: &GuiState, _env: &_| format!(
