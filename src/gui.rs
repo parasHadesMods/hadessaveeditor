@@ -333,7 +333,7 @@ pub fn gui(lua: Lua, savedata: HadesSaveV16, path: PathBuf) -> Result<()> {
         value_pointed_by_columns: None,
         value_edit_box: String::new()
     };
-    gui_state.sync();
+    gui_state.sync()?;
 
     let main_window = WindowDesc::new(ui_builder)
         .title(|state: &GuiState, _env: &_| format!(
