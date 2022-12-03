@@ -205,6 +205,7 @@ fn ui_builder() -> impl Widget<GuiState> {
                 Label::new(| lua_path: &Vector<TableKey>, _env: &_ | {
                     lua_path_as_string(lua_path)
                 })
+                .expand_width()
                 .lens(GuiState::lua_path_pointed_by_columns), 1.)
             .padding(5.);
 
@@ -212,7 +213,7 @@ fn ui_builder() -> impl Widget<GuiState> {
         Flex::row()
             .with_child(Label::new("Value"))
             .with_spacer(8.)
-            .with_flex_child(TextBox::new().lens(GuiState::value_edit_box), 1.)
+            .with_flex_child(TextBox::new().lens(GuiState::value_edit_box).expand_width(), 1.)
             .with_child(Button::new("Apply")
                 .on_click(|_ctx, state: &mut GuiState, _env| {
                     let mut command: String = lua_path_as_string(&state.lua_path_pointed_by_columns);
