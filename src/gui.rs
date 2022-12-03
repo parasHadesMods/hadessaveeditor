@@ -81,7 +81,7 @@ struct Column {
     items: Vector<TableKey>
 }
 
-#[derive(Clone, Data, PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Clone, Data, Debug, PartialEq, PartialOrd, Eq, Ord)]
 enum TableKey {
     StringKey(String),
     NumberKey(i64)
@@ -298,7 +298,7 @@ fn lua_to_string<'a>(value: Value<'a>, lua_ctx: Context<'a>) -> Result<String> {
             String::from_lua(value, lua_ctx)?
         },
         Value::String(_) => {
-            String::from_lua(value, lua_ctx)?
+            format!("\"{}\"", String::from_lua(value, lua_ctx)?)
         },
         Value::Table(_) => {
             "table".to_owned()
