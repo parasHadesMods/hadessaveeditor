@@ -11,6 +11,7 @@ use rlua::{Context, Lua, Table, Value, FromLua};
 use std::fs;
 use std::rc::Rc;
 use std::path::PathBuf;
+use std::mem;
 
 
 #[derive(Clone, Data, Lens)]
@@ -36,7 +37,9 @@ impl GuiState {
         self.sync()
     }
     fn sync(self: &mut GuiState) -> Result<()> {
-        self.columns = Vector::new();
+        let mut old_columns = Vector::new();
+        mem::swap(&mut self.columns, &mut old_columns);
+
         self.lua.context(|lua_ctx| -> Result<()> {
             let save_ignores: Table = lua_ctx.globals().get("SaveIgnores")?;
 
@@ -47,7 +50,12 @@ impl GuiState {
                 let lua_value = lua_get_path(lua_ctx, lua_path.clone())?;
                 match lua_value {
                     Value::Table(table_value) => {
-                        self.columns.push_back(Column { selected: None, items: Vector::new() });
+                        let selected = if old_columns.len() > idx {
+                            old_columns[idx].selected
+                        } else {
+                          None
+                        };
+                        self.columns.push_back(Column { selected: selected, items: Vector::new() });
                         for pair in table_value.pairs::<Value, Value>() {
                             let (key, value) = pair?;
                             if lua_is_saved_type(&value) && (idx != 1 ||!save_ignores.get(key.clone())?) {
@@ -75,7 +83,7 @@ impl GuiState {
     }
 }
 
-#[derive(Clone, Data, Lens)]
+#[derive(Clone, Data, Lens, Debug)]
 struct Column {
     selected: Option<usize>,
     items: Vector<TableKey>
