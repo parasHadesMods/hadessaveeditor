@@ -25,6 +25,7 @@ struct GuiState {
     columns: Vector<Column>,
     lua_path_pointed_by_columns: Vector<TableKey>,
     value_pointed_by_columns: Option<String>,
+    name_edit_box: String,
     value_edit_box: String
 }
 
@@ -217,6 +218,22 @@ fn ui_builder() -> impl Widget<GuiState> {
                 .lens(GuiState::lua_path_pointed_by_columns), 1.)
             .padding(5.);
 
+    let name_row = 
+        Flex::row()
+            .with_child(Label::new("Name"))
+            .with_spacer(8.)
+            .with_flex_child(TextBox::new().lens(GuiState::name_edit_box).expand_width(), 1.)
+            .with_child(Button::new("Add")
+                .on_click(|_ctx, state: &mut GuiState, _env| {
+                    let mut command: String = lua_path_as_string(&state.lua_path_pointed_by_columns);
+                    command.push_str("[");
+                    command.push_str(&state.name_edit_box);
+                    command.push_str("] = {}");
+                    state.name_edit_box = String::new();
+                    state.run_command(&command).unwrap(); // TODO
+                }))
+            .padding(5.);
+
     let value_row  =
         Flex::row()
             .with_child(Label::new("Value"))
@@ -235,6 +252,7 @@ fn ui_builder() -> impl Widget<GuiState> {
         .cross_axis_alignment(druid::widget::CrossAxisAlignment::Start)
         .with_child(file_row)
         .with_child(path_row)
+        .with_child(name_row)
         .with_child(value_row)
         .with_flex_child(columns, 1.0)
 }
@@ -340,6 +358,7 @@ pub fn gui(lua: Lua, savedata: HadesSaveV16, path: PathBuf) -> Result<()> {
         columns: Vector::new(),
         lua_path_pointed_by_columns: Vector::new(),
         value_pointed_by_columns: None,
+        name_edit_box: String::new(),
         value_edit_box: String::new()
     };
     gui_state.sync()?;
