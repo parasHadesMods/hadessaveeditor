@@ -8,6 +8,7 @@ mod write;
 
 use anyhow::Result;
 use clap::{arg, Command};
+use hadesfile::HadesSave;
 use rlua::Lua;
 use std::path::{Path, PathBuf};
 use std::fs;
@@ -31,9 +32,13 @@ fn main() -> Result<()> {
 
     let file = read_file(path)?;
     let savedata = hadesfile::read(&mut file.as_slice())?;
+    let lua_state = match savedata.clone() {
+        HadesSave::V16(data) => data.lua_state,
+        HadesSave::V17(data) => data.lua_state
+    };
 
     luastate::initialize(&lua)?;
-    luastate::load(&lua, &mut savedata.lua_state.as_slice())?;
+    luastate::load(&lua, &mut lua_state.as_slice())?;
 
     if matches.get_flag("repl") {
         repl::repl(lua, savedata, path.to_owned())?;

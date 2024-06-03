@@ -6,7 +6,7 @@ use druid::im::Vector;
 use druid::{AppLauncher, Color, Data, Env, Lens, Key, Size, theme, Widget, WidgetExt, WindowDesc};
 use druid::lens::{self, LensExt};
 use druid::widget::{Button, Flex, Label, List, Scroll, TextBox, Either};
-use hadesfile::HadesSaveV16;
+use hadesfile::HadesSave;
 use rlua::{Context, Lua, Table, Value, FromLua};
 use std::fs;
 use std::rc::Rc;
@@ -20,7 +20,7 @@ struct GuiState {
     #[data(ignore)]
     path: PathBuf,
     #[data(ignore)]
-    savedata: HadesSaveV16,
+    savedata: HadesSave,
     dirty: bool,
     columns: Vector<Column>,
     lua_path_pointed_by_columns: Vector<TableKey>,
@@ -198,8 +198,17 @@ fn ui_builder() -> impl Widget<GuiState> {
             ).lens(GuiState::dirty), 1.)
             .with_child(Button::new("Save").on_click(|_ctx, state: &mut GuiState, _env| {
                 if state.dirty {
-                    state.savedata.lua_state = luastate::save(state.lua.as_ref()).unwrap(); // TODO
-                    let outfile = hadesfile::write(&state.savedata).unwrap(); // TODO
+                    let mut savedata = state.savedata.clone();
+                    let lua_state = luastate::save(state.lua.as_ref()).unwrap(); // TODO
+                    match savedata {
+                        HadesSave::V16(ref mut data) => {
+                            data.lua_state = lua_state
+                        },
+                        HadesSave::V17(ref mut data) => {
+                            data.lua_state = lua_state
+                        }
+                    }
+                    let outfile = hadesfile::write(&savedata).unwrap(); // TODO
                     fs::write(&state.path, outfile).unwrap(); // TODO
                     state.dirty = false;
                 }
@@ -349,7 +358,7 @@ fn lua_to_table_key<'a>(value: Value<'a>, lua_ctx: Context<'a>) -> Result<TableK
     Ok(table_key)
 }
 
-pub fn gui(lua: Lua, savedata: HadesSaveV16, path: PathBuf) -> Result<()> {
+pub fn gui(lua: Lua, savedata: HadesSave, path: PathBuf) -> Result<()> {
     let mut gui_state = GuiState {
         lua: Rc::new(lua),
         path: path,
