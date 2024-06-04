@@ -13,3 +13,4 @@ clap = "4.0.27"
 lz4 = "1.24.0"
 adler32 = "1.2.0"
 druid = { version = "0.7.0", features = ["im"] }
+serde_json = "1.0.117"
