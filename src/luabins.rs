@@ -2,6 +2,7 @@ use crate::read;
 use crate::write;
 
 use anyhow::{anyhow, Context, Result};
+use rlua::Lua;
 use std::convert::TryInto;
 use rlua::Value;
 
@@ -14,6 +15,7 @@ const LUABINS_CTABLE: u8 = 0x54;
 
 fn load_number<'lua>(loadstate: &mut &[u8]) -> Result<rlua::Value<'lua>> {
   let float = read::f64(loadstate)?;
+  //println!("number {}", float);
   if float.fract() == 0.0 {
     Ok(Value::Integer(float.trunc() as i64))
   } else {
@@ -24,6 +26,7 @@ fn load_number<'lua>(loadstate: &mut &[u8]) -> Result<rlua::Value<'lua>> {
 fn load_string<'lua>(loadstate: &mut &[u8], context: rlua::Context<'lua>) -> Result<rlua::String<'lua>> {
   let len = read::u32(loadstate).context("string size")?;
   let str_bytes = read::bytes(loadstate, len.try_into().unwrap()).context("string")?;
+  //println!("string {} {:?}", len, std::str::from_utf8(str_bytes));
   context.create_string(str_bytes).map_err(anyhow::Error::new)
 }
 
@@ -33,6 +36,7 @@ fn load_table<'lua>(loadstate: &mut &[u8], context: rlua::Context<'lua>) -> Resu
   let total_size = array_size + hash_size;
   let table: rlua::Table<'lua> = context.create_table().context("create_table")?;
 
+  //println!("table arr {} hash {}", array_size, hash_size);
   for _ in 0..total_size {
     let key = load_value(loadstate, context).context("key")?;
     let value = load_value(loadstate, context).context("value")?;
@@ -43,6 +47,7 @@ fn load_table<'lua>(loadstate: &mut &[u8], context: rlua::Context<'lua>) -> Resu
 
 fn load_value<'a>(loadstate: &mut &[u8], context: rlua::Context<'a>) -> Result<Value<'a>> {
   let tbyte = read::byte(loadstate).context("type")?;
+  //println!("type {}", tbyte);
   match tbyte {
     LUABINS_CNIL => Ok(Value::Nil),
     LUABINS_CFALSE => Ok(Value::Boolean(false)),   
@@ -55,13 +60,37 @@ fn load_value<'a>(loadstate: &mut &[u8], context: rlua::Context<'a>) -> Result<V
 }
 
 pub fn load<'lua>(loadstate: &mut &[u8], context: rlua::Context<'lua>) -> Result<Vec<Value<'lua>>> {
+    println!("load size {} [{} {}]", loadstate.len(), loadstate.first().unwrap(), loadstate.last().unwrap());
     let num_items = read::byte(loadstate).context("num_items")?;
+    //println!("load {}", num_items);
     let mut vec = Vec::new();
     for _ in 0..num_items {
         let value = load_value(loadstate, context).context("load")?;
         vec.push(value);
     }
+    println!("load remaining {} all0 {}",
+      loadstate.len(),
+      loadstate.iter().all(|x| x == &b'\0'));
     Ok(vec)
+}
+
+pub fn size(loadstate: &[u8]) -> Result<usize> {
+  Lua::new().context(|context| -> Result<usize> {
+    let ugh = loadstate.to_owned();
+    let copy = &mut ugh.as_slice();
+    let num_items = read::byte(copy).context("num_items")?;
+    for _ in 0..num_items {
+        load_value(copy, context).context("load")?;
+    }
+
+    let size = loadstate.len() - copy.len();
+    println!("init {} rem {} size {}",
+      loadstate.len(),
+      copy.len(),
+      size);
+
+    Ok(size)
+  })
 }
 
 fn save_string(savestate: &mut Vec<u8>, string: rlua::String) {
@@ -71,9 +100,13 @@ fn save_string(savestate: &mut Vec<u8>, string: rlua::String) {
 }
 
 fn save_table(savestate: &mut Vec<u8>, table: rlua::Table) -> Result<()> {
-  let array_size = table.len()? as i32;
+  // If there are holes punched in the "array section", len
+  // will overreport the size. Luabins handles this by limiting
+  // array_size to the total_size.
+  let total_size = table.clone().pairs::<Value, Value>().count() as i32;
+  let array_size = std::cmp::min(total_size, table.len()? as i32);
   write::i32(savestate, array_size);
-  let hash_size = table.clone().pairs::<Value, Value>().count() as i32 - array_size;
+  let hash_size = std::cmp::max(0, total_size - array_size);
   write::i32(savestate, hash_size);
   for pair in table.pairs::<Value, Value>() {
     let (key, value) = pair?;

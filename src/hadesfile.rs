@@ -1,3 +1,4 @@
+use crate::luabins;
 use crate::read;
 use crate::write;
 
@@ -136,6 +137,12 @@ pub fn read_v17(loadstate: &mut &[u8]) -> Result<HadesSaveV17> {
     &lua_state_lz4,
     Some(HadesSaveV16::UNCOMPRESSED_SIZE))?;
 
+  let lua_size = luabins::size(lua_state.as_slice())?;
+  println!(
+    "uncompressed {} luasize {}",
+    lua_state.len(),
+    lua_size);
+
   Ok(HadesSaveV17 {
     timestamp: timestamp,
     location: location,
@@ -146,7 +153,7 @@ pub fn read_v17(loadstate: &mut &[u8]) -> Result<HadesSaveV17> {
     lua_keys: lua_keys,
     current_map_name: current_map_name,
     start_next_map: start_next_map,
-    lua_state: lua_state
+    lua_state: lua_state[0..lua_size].to_vec()
   })
 }
 
@@ -224,7 +231,11 @@ pub fn write_v17 (save: &HadesSaveV17) -> Result<Vec<u8>> {
   write_string(&mut contents, &save.current_map_name);
   write_string(&mut contents, &save.start_next_map);
 
+  let lua_size = luabins::size(&save.lua_state)?;
+  println!("lua_state.len() {} lua_size {}", save.lua_state.len(), lua_size);
+
   let mut lua_state_lz4 = lz4::block::compress(&save.lua_state, None, false)?;
+
   write::u32(&mut contents, lua_state_lz4.len() as u32);
   write::bytes(&mut contents, &mut lua_state_lz4);
 

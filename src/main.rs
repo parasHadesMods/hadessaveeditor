@@ -33,11 +33,16 @@ fn main() -> Result<()> {
     let file = read_file(path)?;
     let savedata = hadesfile::read(&mut file.as_slice())?;
     let lua_state = match savedata.clone() {
-        HadesSave::V16(data) => data.lua_state,
-        HadesSave::V17(data) => data.lua_state
+        HadesSave::V16(data) => {
+            luastate::initialize_v16(&lua)?;
+            data.lua_state
+        },
+        HadesSave::V17(data) => {
+            luastate::initialize_v17(&lua)?;
+            data.lua_state
+        }
     };
 
-    luastate::initialize(&lua)?;
     luastate::load(&lua, &mut lua_state.as_slice())?;
 
     if matches.get_flag("repl") {
