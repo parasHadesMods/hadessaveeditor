@@ -18,6 +18,7 @@ fn cli() -> Command {
         .about("A save file editor for hades")
         .arg(arg!(file: [FILE] "The hades save file to open.").value_parser(clap::value_parser!(PathBuf)))
         .arg(arg!(-r --repl "Starts the command-line repl instead of the gui."))
+        .arg(arg!(-s --script [SCRIPT] "Runs the script on the file before opening.").value_parser(clap::value_parser!(PathBuf)))
         .arg_required_else_help(true)
 }
 
@@ -44,6 +45,17 @@ fn main() -> Result<()> {
     };
 
     luastate::load(&lua, &mut lua_state.as_slice())?;
+
+    match matches.get_one::<PathBuf>("script") {
+        Some(script_path) => {
+            let file = read_file(script_path)?;
+            lua.context(|ctx| -> Result<()> {
+                let chunk = ctx.load(&file);
+                chunk.exec().map_err(anyhow::Error::new)
+            })?
+        },
+        _ => {}
+    }
 
     if matches.get_flag("repl") {
         repl::repl(lua, savedata, path.to_owned())?;
