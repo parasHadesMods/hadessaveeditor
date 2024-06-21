@@ -26,14 +26,28 @@ pub fn save(lua: &Lua) -> Result<Vec<u8>> {
         // read save file data from
         lua_ctx.load(r#"  
             _saveData = { [1] = {}}
-            for key, value in pairs( _G ) do
+
+            if GlobalSaveWhitelist ~= nil then
+                for i, key in ipairs( GlobalSaveWhitelist ) do
+                    local value = _G[key]
+                    if value ~= nil then
+                        local valueType = type(value)
+                        if valueType ~= "function" and valueType ~= "userdata" and valueType ~= "thread" then
+                            _saveData[1][key] = value
+                        end
+                    end
+                end
+            else
+                for key, value in pairs( _G ) do
                     if value ~= nil and not SaveIgnores[key] then
                             local valueType = type(value)
                             if valueType ~= "function" and valueType ~= "userdata" and valueType ~= "thread" then
                                 _saveData[1][key] = value
                             end
                     end
+                end
             end
+
         "#).exec().map_err(anyhow::Error::new)?;
         let save_data: Vec<Value> = lua_ctx.globals().get("_saveData").map_err(anyhow::Error::new)?;
         luabins::save(&mut new_lua_state, save_data)
@@ -41,7 +55,29 @@ pub fn save(lua: &Lua) -> Result<Vec<u8>> {
     Ok(new_lua_state)
 }
 
-pub fn initialize(lua: &Lua) -> Result<()> {
+pub fn initialize_v17(lua: &Lua) -> Result<()> {
+    lua.context(|lua_ctx| -> Result<()> {
+        lua_ctx.load(r#"
+            GlobalSaveWhitelist = {
+                "GameState",
+                "StoredGameState",
+                "CurrentRun",
+                "MapState",
+                "AudioState",
+                "CurrentHubRoom",
+                "CodexStatus",
+                "_worldTime",
+                "_worldTimeUnmodified",
+                "Revision",
+                "NextSeeds",
+            }
+            SaveIgnores = {}
+        "#).exec().map_err(anyhow::Error::new)
+    })
+}
+
+
+pub fn initialize_v16(lua: &Lua) -> Result<()> {
     lua.context(|lua_ctx| -> Result<()> {
         lua_ctx.load(r#"
             SaveIgnores = {}

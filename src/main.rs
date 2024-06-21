@@ -20,6 +20,7 @@ fn cli() -> Command {
         .arg(arg!(file: [FILE] "The hades save file to open.").value_parser(clap::value_parser!(PathBuf)))
         .arg(arg!(-r --repl "Starts the command-line repl instead of the gui."))
         .arg(arg!(--json "Dumps the save as json instead of starting the gui."))
+        .arg(arg!(-s --script [SCRIPT] "Runs the script on the file before opening.").value_parser(clap::value_parser!(PathBuf)))
         .arg_required_else_help(true)
 }
 
@@ -35,8 +36,14 @@ fn main() -> Result<()> {
     let file = read_file(path)?;
     let savedata: HadesSave = hadesfile::read(&mut file.as_slice())?;
     let lua_state = match savedata.clone() {
-        HadesSave::V16(data) => data.lua_state,
-        HadesSave::V17(data) => data.lua_state
+        HadesSave::V16(data) => {
+            luastate::initialize_v16(&lua)?;
+            data.lua_state
+        },
+        HadesSave::V17(data) => {
+            luastate::initialize_v17(&lua)?;
+            data.lua_state
+        }
     };
 
     if matches.get_flag("json") {
@@ -47,8 +54,18 @@ fn main() -> Result<()> {
         })?;
         println!("{}", value);
     } else {
-        luastate::initialize(&lua)?;
-        luastate::load(&lua, &mut lua_state.as_slice())?;    
+        luastate::load(&lua, &mut lua_state.as_slice())?;
+
+        match matches.get_one::<PathBuf>("script") {
+            Some(script_path) => {
+                let file = read_file(script_path)?;
+                lua.context(|ctx| -> Result<()> {
+                    let chunk = ctx.load(&file);
+                    chunk.exec().map_err(anyhow::Error::new)
+                })?
+            },
+            _ => {}
+        }    
 
         if matches.get_flag("repl") {
             repl::repl(lua, savedata, path.to_owned())?;
