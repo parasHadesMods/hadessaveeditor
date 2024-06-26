@@ -133,86 +133,90 @@ bounty.RewardStoreOverrides = {
                 -- None
             },
         },
-        {
-            Name = "Boon",
-            AllowDuplicates = true,
-            GameStateRequirements =
-            {
-                {
-                    FunctionName = "SetPathValue",
-                    FunctionArgs = {
-                        TablePath = { "CurrentRun", "CurrentRoom" },
-                        Key = "LeaveEvents",
-                        Value = {
-                            {
-                                FunctionName = "RunEventsGeneric",
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        {
-            Name = "Boon",
-            AllowDuplicates = true,
-            GameStateRequirements =
-            {
-                {
-                    FunctionName = "SetPathValue",
-                    FunctionArgs = {
-                        TablePath = { "CurrentRun", "CurrentRoom" },
-                        Key = 1,
-                        Value = {
-                            FunctionName = "RandomSynchronize",
-                        }
-                    }
-                }
-            }
-        },
-        -- {
-        --     Name = "Boon",
-        --     AllowDuplicates = true,
-        --     GameStateRequirements =
-        --     {
-        --         {
-        --             FunctionName = "SetPathValue",
-        --             FunctionArgs = {
-        --                 TablePath = { "HubRoomData", "Flashback_Hub_Main" },
-        --                 Key = "OnDeathLoadRequirements",
-        --                 Value = {
-        --                     {
-        --                         {
-        --                             FunctionName = "SetPathValue",
-        --                             FunctionArgs = {
-        --                                 TablePath = { "NextSeeds" },
-        --                                 Key = 1,
-        --                                 Value = NextSeeds[1]
-        --                             }
-        --                         }
-        --                     },
-        --                     {
-        --                         {
-        --                             FunctionName = "SetPathValue",
-        --                             FunctionArgs = {
-        --                                 TablePath = { "CurrentRun" },
-        --                                 Key = 1,
-        --                                 Value  = {
-        --                                     FunctionName = "RandomSynchronize"
-        --                                 }
-        --                             }
-        --                         }
-        --                     },
-        --                     {
-        --                         {
-        --                             FunctionName = "RunEventsGeneric"
-        --                         }
-        --                     }
-        --                 }
-        --             }
-        --         }
-        --     }
-        -- },
     }
 }
+
+function AddBoonRequirementsFunctionCall(bounty, name, args)
+    table.insert(bounty.RewardStoreOverrides.RunProgress, {
+        Name = "Boon",
+        AllowDuplicates = true,
+        GameStateRequirements =
+        {
+            {
+                FunctionName = name,
+                FunctionArgs = args
+            }
+        }
+    })
+end
+
+local f_rooms = {
+    "F_Opening01",
+    "F_Opening02",
+    "F_Opening03",
+    "F_MiniBoss01",
+    "F_MiniBoss02",
+    "F_Combat01",
+    "F_Combat02",
+    "F_Combat03",
+    "F_Combat04",
+    "F_Combat05",
+    "F_Combat06",
+    "F_Combat07",
+    "F_Combat08",
+    "F_Combat09",
+    "F_Combat10",
+    "F_Combat11",
+    "F_Combat12",
+    "F_Combat13",
+    "F_Combat14",
+    "F_Combat15",
+    "F_Combat16",
+    "F_Combat17",
+    "F_Combat18",
+    "F_Combat19",
+    "F_Shop01",
+    "F_Reprieve01",
+    "F_Story01",
+    "Chaos_01",
+    "Chaos_02",
+    "Chaos_03",
+    "Chaos_04",
+    "Chaos_05",
+    "Chaos_06",
+}
+
+for i, roomName in ipairs(f_rooms) do
+    AddBoonRequirementsFunctionCall(
+        bounty,
+        "SetPathValue",
+        {
+            TablePath = { "RoomData", roomName },
+            Key = "LeavePostPresentationEvents",
+            Value = {
+                {
+                    FunctionName = "RandomSynchronize",
+                    GameStateRequirements = {
+                        {
+                            PathTrue = { "CurrentRun", "ActiveBounty" },
+                        }
+                    }
+                }
+            }
+        }
+    )
+end
+
+-- AddBoonRequirementsFunctionCall(
+--     bounty,
+--     "SetPathValue",
+--     {
+--         TablePath = { "CurrentRun", "CurrentRoom" },
+--         Key = 1,
+--         Value = {
+--             FunctionName = "RandomSynchronize",
+--         }
+--     }
+-- )
 
 bounty.ShrineUpgradesActive = {}
