@@ -60,8 +60,11 @@ bounty.MetaUpgradeStateEquipped = {
     "ChanneledBlock",
 }
 
-bounty.CompleteGameStateRequirements = {
-    { 
+-- any bounty other than this one will do; we can't override ourselves
+-- because then the bounty can't complete out bounty (since this will)
+-- return nil / be treated as false
+BountyData["PackageBountyHealer"].UnlockGameStateRequirements = {
+    {
         FunctionName = "SetPathValue",
         FunctionArgs = {
             TablePath = { "NextSeeds" },
